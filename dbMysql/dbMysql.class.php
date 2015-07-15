@@ -23,10 +23,8 @@ class dbMysql {
 
 	protected function connect() {
 		self::$conn = mysql_connect(self::$dbHost, self::$dbUser, self::$dbPass) or die('Database sunucu bağlantı hatası.');
-
+		$select_db = mysql_select_db(self::$dbName) or die('Database seçilemedi.');
 		self::setCharCollation();
-
-		$select_db = @mysql_select_db(self::$dbName) or die('Database seçilemedi.');
 	}
 
 	public function setCharCollation($names = 'utf8', $char = 'utf8', $collation = 'utf8_general_ci') {
@@ -67,27 +65,26 @@ class dbMysql {
 				break;
 		}
 		unset($tur);
+
 		return $result;
 	}
 
 	public function fetchArray($sql, $rowIndex = Null) {
+		$random = substr(md5(time()),0,6);
 		$resultsx = array();
-		$sqlQuery = self::query($sql);
 
-		if(!is_null($rowIndex) and is_integer($rowIndex)){
-			$resultsx = self::result($sqlQuery, $rowIndex);
+		if (!is_null($rowIndex) and $rowIndex >= 0 and strtolower(substr($sql, 0, 3)) == 'sel') {
+			$sql = 'SELECT qRL_' . $random . '.* FROM (' . $sql . ') AS qRL_' . $random . ' LIMIT ' . $rowIndex . ', 1';
+			$resultsx = self::fetchArray($sql);
+			$resultsx = $resultsx[0];
 		}
-		else{
-			while ($rows = self::fetch_array($sqlQuery)) {
+		else {
+			$sqlQuery = self::query($sql);
+			while ($rows = self::fetch_assoc($sqlQuery)) {
 				$resultsx[] = $rows;
 			}
-
-			if (!is_array($resultsx)) {
-				$resultsx = FALSE;
-			}
 		}
 
-		self::close();
 		return $resultsx;
 	}
 
@@ -95,8 +92,12 @@ class dbMysql {
 		return mysql_fetch_array($queryResult, $type);
 	}
 
+	public function fetch_array_num($queryResult) {
+		return mysql_fetch_array($queryResult, MYSQL_NUM);
+	}
+
 	public function fetch_object($queryResult) {
-		return mysql_fetch_object($queryResult);
+		return mysql_fetch_object($queryResult, self::$conn);
 	}
 
 	public function fetch_assoc($queryResult) {
@@ -107,7 +108,7 @@ class dbMysql {
 		return mysql_num_rows($queryResult);
 	}
 
-	public function numRows($sql){
+	public function numRows($sql) {
 		return self::num_rows(self::query($sql));
 	}
 
@@ -120,7 +121,7 @@ class dbMysql {
 		unset($queryResult);
 	}
 
-	public function insertId(){
+	public function insertId() {
 		return self::insert_id();
 	}
 
@@ -128,8 +129,13 @@ class dbMysql {
 		return mysql_insert_id(self::$conn);
 	}
 
-	public function result($queryResult, $index = 0) {
-		return mysql_result($queryResult, $index);
+	public function result($queryResult, $rowIndex = 0, $colIndexOrName = Null) {
+		if(!is_null($colIndexOrName)){
+			return mysql_result($queryResult, $rowIndex, $colIndexOrName);
+		}
+		else{
+			return mysql_result($queryResult, $rowIndex);
+		}
 	}
 
 	protected function close() {
@@ -137,11 +143,16 @@ class dbMysql {
 	}
 
 	public function clean($sql) {
-		return mysql_real_escape_string($sql);
+		//return mysql_real_escape_string($sql);
+
+		$search = array("\\",  "\x00", "\n",  "\r",  "'",  '"', "\x1a");
+		$replace = array("\\\\","\\0","\\n", "\\r", "\'", '\"', "\\Z");
+
+		return str_replace($search, $replace, $sql);
 	}
 
 	public function nextRow($tableName, $fieldName = 'row', $step = 10) {
-		$sql = "SELECT MAX(".$fieldName.") AS maxRow FROM ".$tableName;
+		$sql = "SELECT MAX(" . $fieldName . ") AS maxRow FROM " . $tableName;
 		$value = self::query($sql);
 		if ($fetchResult = self::fetch_assoc($value)) {
 			$newRow = $fetchResult["maxRow"];
@@ -163,11 +174,15 @@ class dbMysql {
 		return self::$dbName;
 	}
 
-	public function getLastError(){
+	public function getLastError() {
 		return self::$lastError;
 	}
 
-	public function getLastQuery(){
+	public function getLastQuery() {
 		return self::$lastQuery;
+	}
+
+	public function __destruct(){
+		self::close();
 	}
 }
