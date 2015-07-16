@@ -11,14 +11,21 @@ class dbMysql {
 	protected static $lastError;
 	protected static $lastQuery;
 
+	protected static $beginTime;
+	protected static $timing;
+
 
 	public function __construct($host, $user, $pass, $databaseName) {
+		self::$beginTime = microtime(true);
+		$startTime = microtime(true);
+
 		self::$dbHost = $host;
 		self::$dbUser = $user;
 		self::$dbPass = $pass;
 		self::$dbName = $databaseName;
 
 		self::connect();
+		self::$timing['connection'] = round((microtime(true) - $startTime), 5);
 	}
 
 	protected function connect() {
@@ -38,9 +45,10 @@ class dbMysql {
 	}
 
 	public function query($sql) {
-		$sql = self::clean($sql);
+		$startTime = microtime(true);
+		//$sql = self::clean($sql);
 		self::$lastQuery = $sql;
-		self::$lastError = mysql_error(self::$conn);
+		self::$lastError =& mysql_error(self::$conn);
 
 		$tur = strtolower(substr($sql, 0, 3));
 		switch ($tur) {
@@ -65,11 +73,12 @@ class dbMysql {
 				break;
 		}
 		unset($tur);
-
+		self::$timing['query'] = round((microtime(true) - $startTime), 5);
 		return $result;
 	}
 
 	public function fetchArray($sql, $rowIndex = Null) {
+		$startTime = microtime(true);
 		$random = substr(md5(time()),0,6);
 		$resultsx = array();
 
@@ -84,6 +93,29 @@ class dbMysql {
 				$resultsx[] = $rows;
 			}
 		}
+
+		self::$timing['fetchArray'] = round((microtime(true) - $startTime), 5);
+		return $resultsx;
+	}
+
+	public function fetchObject($sql, $rowIndex = Null) {
+		$startTime = microtime(true);
+		$random = substr(md5(time()),0,6);
+		$resultsx = array();
+
+		if (!is_null($rowIndex) and $rowIndex >= 0 and strtolower(substr($sql, 0, 3)) == 'sel') {
+			$sql = 'SELECT qRL_' . $random . '.* FROM (' . $sql . ') AS qRL_' . $random . ' LIMIT ' . $rowIndex . ', 1';
+			$resultsx = self::fetchObject($sql);
+			$resultsx = $resultsx[0];
+		}
+		else {
+			$sqlQuery = self::query($sql);
+			while ($rows = self::fetch_object($sqlQuery)) {
+				$resultsx[] = $rows;
+			}
+		}
+
+		self::$timing['fetchObject'] = round((microtime(true) - $startTime),3);
 
 		return $resultsx;
 	}
@@ -109,7 +141,25 @@ class dbMysql {
 	}
 
 	public function numRows($sql) {
-		return self::num_rows(self::query($sql));
+		$startTime = microtime(true);
+
+		$numRows = self::num_rows(self::query($sql));
+
+		self::$timing['numRows'] = round((microtime(true) - $startTime), 5);
+
+		return $numRows;
+	}
+
+	public function numRowsCount($sql) {
+		$startTime = microtime(true);
+
+		$sql = preg_replace('/^select .*? from (.*?)/ix', 'SELECT count(*) AS dfsa1231fde5 FROM $1', $sql);
+		$query = self::fetchArray($sql, 0);
+		$numRows = $query['dfsa1231fde5'];
+
+		self::$timing['numRows'] = round((microtime(true) - $startTime), 5);
+
+		return $numRows;
 	}
 
 	public function affected_rows() {
@@ -180,6 +230,11 @@ class dbMysql {
 
 	public function getLastQuery() {
 		return self::$lastQuery;
+	}
+
+	public function getTiming(){
+		self::$timing['total'] = round((microtime(true) - self::$beginTime), 5);
+		return self::$timing;
 	}
 
 	public function __destruct(){
