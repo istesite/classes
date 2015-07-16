@@ -1,5 +1,4 @@
 <?php
-
 class dbMysql {
 	protected static $conn;
 
@@ -172,8 +171,8 @@ class dbMysql {
 	}
 
 	public function insertId() {
-		return self::insert_id();
-	}
+	return self::insert_id();
+}
 
 	public function insert_id() {
 		return mysql_insert_id(self::$conn);
@@ -203,8 +202,7 @@ class dbMysql {
 
 	public function nextRow($tableName, $fieldName = 'row', $step = 10) {
 		$sql = "SELECT MAX(" . $fieldName . ") AS maxRow FROM " . $tableName;
-		$value = self::query($sql);
-		if ($fetchResult = self::fetch_assoc($value)) {
+		if ($fetchResult = self::fetchArray($sql, 0)) {
 			$newRow = $fetchResult["maxRow"];
 			if ($newRow % $step == 0) {
 				return $newRow + $step;
