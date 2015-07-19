@@ -8,9 +8,13 @@ class dbSqlite {
 	protected static $beginTime;
 	protected static $timing;
 
-	public function __construct($dbFilePath) {
-		self::$conn = new SQLite3($dbFilePath);
-		//self::$lastError =& sqlite_last_error(self::$conn);
+	public function __construct($dbName) {
+		self::$beginTime = microtime(true);
+		if(!is_dir($dbName)){
+			mkdir($dbName,0777);
+		}
+		self::$conn = new SQLite3($dbName."/".$dbName.".sqlite");
+		self::$lastError = self::$conn->lastErrorCode() . " - " . self::$conn->lastErrorMsg();
 	}
 
 	public function query($sql) {
@@ -99,33 +103,23 @@ class dbSqlite {
 	}
 
 	public function fetch_array($queryResult, $type = SQLITE3_BOTH) {
-		return sqlite_fetch_array($queryResult, $type);
+		return $queryResult->fetchArray($type);
 	}
 
 	public function fetch_array_num($queryResult) {
-		return sqlite_fetch_array($queryResult, SQLITE3_NUM);
+		return $queryResult->fetchArray(SQLITE3_NUM);
 	}
 
 	public function fetch_object($queryResult) {
-		return sqlite_fetch_object($queryResult);
+		return $queryResult->fetchObject();
 	}
 
 	public function fetch_assoc($queryResult) {
-		return sqlite_fetch_array($queryResult, SQLITE3_ASSOC);
-	}
-
-	public function num_rows($queryResult) {
-		return sqlite_num_rows($queryResult);
+		return $queryResult->fetchArray(SQLITE3_ASSOC);
 	}
 
 	public function numRows($sql) {
-		$startTime = microtime(true);
-
-		$numRows = self::num_rows(self::query($sql));
-
-		self::$timing['numRows'] = round((microtime(true) - $startTime), 5);
-
-		return $numRows;
+		return self::numRowsCount($sql);
 	}
 
 	public function numRowsCount($sql) {
@@ -141,7 +135,7 @@ class dbSqlite {
 	}
 
 	public function affected_rows() {
-		return sqlite_changes(self::$conn);
+		return self::$conn->changes();
 	}
 
 	public function insertId() {
@@ -149,14 +143,11 @@ class dbSqlite {
 	}
 
 	public function insert_id() {
-		return sqlite_last_insert_rowid(self::conn);
+		return self::$conn->lastInsertRowID();
 	}
 
 	public function clean($sql) {
-		$search = array("\\", "\x00", "\n", "\r", "'", '"', "\x1a");
-		$replace = array("\\\\", "\\0", "\\n", "\\r", "\'", '\"', "\\Z");
-
-		return str_replace($search, $replace, $sql);
+		return self::$conn->escapeString($sql);
 	}
 
 	public function nextRow($tableName, $fieldName = 'row', $step = 10) {
