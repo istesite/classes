@@ -14,22 +14,29 @@ class dbMysql {
 	protected static $timing;
 
 
-	public function __construct($host, $user, $pass, $databaseName) {
+	public function __construct($host = Null, $user = Null, $pass = Null, $databaseName = Null) {
 		self::$beginTime = microtime(true);
 		$startTime = microtime(true);
 
+		if($host != Null and $user != Null and $pass != Null and $databaseName != Null){
+			self::setDatabase($host, $user, $pass, $databaseName);
+			if(self::connect()){
+				self::$timing['connection'] = round((microtime(true) - $startTime), 5);
+			}
+		}
+	}
+
+	public function setDatabase($host, $user, $pass, $databaseName){
 		self::$dbHost = $host;
 		self::$dbUser = $user;
 		self::$dbPass = $pass;
 		self::$dbName = $databaseName;
-
-		self::connect();
-		self::$timing['connection'] = round((microtime(true) - $startTime), 5);
 	}
 
 	protected function connect() {
 		self::$conn = pg_connect("host=".self::$dbHost." port=5432 dbname=".self::$dbName." user=".self::$dbUser." password=".self::$dbPass) or die('Database sunucu bağlantı hatası.');
 		self::setCharCollation();
+		return true;
 	}
 
 	public function setCharCollation($names = 'utf8', $char = 'utf8', $collation = 'utf8_general_ci') {
