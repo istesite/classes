@@ -8,12 +8,14 @@ class dbSqlite {
 	protected static $beginTime;
 	protected static $timing;
 
+	protected static $debug = true;
+
 	public function __construct($dbName) {
 		self::$beginTime = microtime(true);
 		if(!is_dir($dbName)){
 			mkdir($dbName,0777);
 		}
-		self::$conn = new SQLite3($dbName."/".$dbName.".sqlite");
+		self::$conn = new SQLite3($dbName);
 		self::$lastError = self::$conn->lastErrorCode() . " - " . self::$conn->lastErrorMsg();
 	}
 
@@ -173,6 +175,25 @@ class dbSqlite {
 		return self::$conn->close();
 	}
 
+	public function reIndex(){
+		$sql = "SELECT name, tbl_name, rootpage, sql FROM \"main\".sqlite_master WHERE type = 'index' ORDER BY tbl_name, name";
+		$rows = $this->fetchArray($sql);
+		foreach($rows as $row){
+			$reIndexSql = "REINDEX \"".$row['name']."\";";
+			$this->query($reIndexSql);
+		}
+	}
+
+	public function vacuum(){
+		$sql = "VACUUM";
+		$this->query($sql);
+	}
+
+	public function startMaintain(){
+		$this->reIndex();
+		$this->vacuum();
+	}
+
 	public function getLastQuery() {
 		return self::$lastQuery;
 	}
@@ -185,5 +206,8 @@ class dbSqlite {
 
 	public function __destruct() {
 		self::close();
+		if(self::$debug){
+			echo "\r\nTimes : " . print_r(self::getTiming(), true) . "\r\n";
+		}
 	}
 }

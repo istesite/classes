@@ -13,16 +13,21 @@ class dbMysql {
 	protected static $beginTime;
 	protected static $timing;
 
+	protected static $debug = false;
+	protected static $error_reporting;
+
 
 	public function __construct($host = Null, $user = Null, $pass = Null, $databaseName = Null) {
+		if (defined('DEBUG_MODE') and DEBUG_MODE == TRUE) {
+			self::$debug = TRUE;
+		}
+		self::$error_reporting = error_reporting();
+		error_reporting( self::$error_reporting & ~E_WARNING);
 		self::$beginTime = microtime(true);
-		$startTime = microtime(true);
 
 		if($host != Null and $user != Null and $pass != Null and $databaseName != Null){
 			self::setDatabase($host, $user, $pass, $databaseName);
-			if(self::connect()){
-				self::$timing['connection'] = round((microtime(true) - $startTime), 5);
-			}
+			self::connect();
 		}
 	}
 
@@ -34,16 +39,23 @@ class dbMysql {
 	}
 
 	public function connect() {
+		$startTime = microtime(true);
 		self::$conn = mysql_connect(self::$dbHost, self::$dbUser, self::$dbPass) or die('Database sunucu bağlantı hatası.');
+		self::$timing['connect'] = round((microtime(true) - $startTime), 5);
+
+		$startTime = microtime(true);
 		$select_db = mysql_select_db(self::$dbName) or die('Database seçilemedi.');
+		self::$timing['select_db'] = round((microtime(true) - $startTime), 5);
 		self::setCharCollation();
 		return true;
 	}
 
 	public function setCharCollation($names = 'utf8', $char = 'utf8', $collation = 'utf8_general_ci') {
+		$startTime = microtime(true);
 		self::query("SET NAMES '$names'");
 		self::query("SET CHARACTER SET '$char'");
 		self::query("SET COLLATION_CONNECTION = '$collation'");
+		self::$timing['setCharCollation'] = round((microtime(true) - $startTime), 5);
 	}
 
 	public function exec($sql) {
@@ -83,7 +95,7 @@ class dbMysql {
 		return $result;
 	}
 
-	public function fetchArray($sql, $rowIndex = Null) {
+	public function fetchArray($sql, $rowIndex = Null, $field = Null) {
 		$startTime = microtime(true);
 		$random = substr(md5(time()),0,6);
 		$resultsx = array();
@@ -91,7 +103,13 @@ class dbMysql {
 		if (!is_null($rowIndex) and $rowIndex >= 0 and strtolower(substr($sql, 0, 3)) == 'sel') {
 			$sql = 'SELECT qRL_' . $random . '.* FROM (' . $sql . ') AS qRL_' . $random . ' LIMIT ' . $rowIndex . ', 1';
 			$resultsx = self::fetchArray($sql);
-			$resultsx = $resultsx[0];
+
+			if(!is_null($field)){
+				$resultsx = $resultsx[0][$field];
+			}
+			else{
+				$resultsx = $resultsx[0];
+			}
 		}
 		else {
 			$sqlQuery = self::query($sql);
@@ -104,7 +122,7 @@ class dbMysql {
 		return $resultsx;
 	}
 
-	public function fetchObject($sql, $rowIndex = Null) {
+	public function fetchObject($sql, $rowIndex = Null, $field = Null) {
 		$startTime = microtime(true);
 		$random = substr(md5(time()),0,6);
 		$resultsx = array();
@@ -112,7 +130,12 @@ class dbMysql {
 		if (!is_null($rowIndex) and $rowIndex >= 0 and strtolower(substr($sql, 0, 3)) == 'sel') {
 			$sql = 'SELECT qRL_' . $random . '.* FROM (' . $sql . ') AS qRL_' . $random . ' LIMIT ' . $rowIndex . ', 1';
 			$resultsx = self::fetchObject($sql);
-			$resultsx = $resultsx[0];
+			if(!is_null($field)) {
+				$resultsx = $resultsx[0][$field];
+			}
+			else{
+				$resultsx = $resultsx[0];
+			}
 		}
 		else {
 			$sqlQuery = self::query($sql);
@@ -237,6 +260,11 @@ class dbMysql {
 		return self::$lastQuery;
 	}
 
+	public function setDebug($state = false){
+		self::$debug = $state;
+		return true;
+	}
+
 	public function getTiming(){
 		self::$timing['total'] = round((microtime(true) - self::$beginTime), 5);
 		return self::$timing;
@@ -244,5 +272,9 @@ class dbMysql {
 
 	public function __destruct(){
 		self::close();
+		if(self::$debug){
+			echo "\r\nTimes : " . print_r(self::getTiming(), true) . "\r\n";
+		}
+		error_reporting(self::$error_reporting);
 	}
 }

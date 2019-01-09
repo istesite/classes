@@ -1,5 +1,5 @@
 <?php
-class dbMysql {
+class dbPdoMysql{
 	protected static $conn;
 
 	protected static $dbUser;
@@ -13,18 +13,22 @@ class dbMysql {
 	protected static $beginTime;
 	protected static $timing;
 
-	protected static $debug = true;
+	protected static $debug = false;
+	protected static $error_reporting;
 
 
 	public function __construct($host = Null, $user = Null, $pass = Null, $databaseName = Null) {
+		self::$error_reporting = error_reporting();
+		error_reporting( self::$error_reporting & ~E_WARNING);
 		self::$beginTime = microtime(true);
-		$startTime = microtime(true);
+
+		if (!defined('PDO::ATTR_DRIVER_NAME')) {
+			echo 'PDO unavailable'; exit;
+		}
 
 		if($host != Null and $user != Null and $pass != Null and $databaseName != Null){
 			self::setDatabase($host, $user, $pass, $databaseName);
-			if(self::connect()){
-				self::$timing['connection'] = round((microtime(true) - $startTime), 5);
-			}
+			self::connect();
 		}
 	}
 
@@ -35,16 +39,28 @@ class dbMysql {
 		self::$dbName = $databaseName;
 	}
 
-	protected function connect() {
-		self::$conn = pg_connect("host=".self::$dbHost." port=5432 dbname=".self::$dbName." user=".self::$dbUser." password=".self::$dbPass) or die('Database sunucu bağlantı hatası.');
-		self::setCharCollation();
-		return true;
+	public function connect() {
+		try {
+			$startTime               = microtime(TRUE);
+			$con              = new PDO('mysql:host=' . self::$dbHost . ';dbname=' . self::$dbName, self::$dbUser, self::$dbPass);
+			$con->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+			self::$conn = $con;
+			self::$timing['connect'] = round((microtime(TRUE) - $startTime), 5);
+			self::setCharCollation();
+			return true;
+		}
+		catch (PDOException $e){
+			self::$lastError = $e->getMessage();
+			return false;
+		}
 	}
 
 	public function setCharCollation($names = 'utf8', $char = 'utf8', $collation = 'utf8_general_ci') {
+		$startTime = microtime(true);
 		self::query("SET NAMES '$names'");
 		self::query("SET CHARACTER SET '$char'");
 		self::query("SET COLLATION_CONNECTION = '$collation'");
+		self::$timing['setCharCollation'] = round((microtime(true) - $startTime), 5);
 	}
 
 	public function exec($sql) {
@@ -52,34 +68,45 @@ class dbMysql {
 	}
 
 	public function query($sql) {
+		$con = self::$conn;
 		$startTime = microtime(true);
-		//$sql = self::clean($sql);
+
 		self::$lastQuery = $sql;
-		self::$lastError =& pg_last_error(self::$conn);
+		try {
+			$tur = strtolower(substr($sql, 0, 3));
+			switch ($tur) {
+				case "sel":
+						$result = $con->prepare($sql);
+						$result->execute();
+					break;
 
-		$tur = strtolower(substr($sql, 0, 3));
-		switch ($tur) {
-			case "sel":
-				$result = pg_query(self::$conn, $sql);
-				break;
+				case "ins":
+						$con->exec($sql);
+						$result = true;
+					break;
 
-			case "ins":
-				$result = pg_query(self::$conn, $sql);
-				break;
+				case "upd":
+						$con->exec($sql);
+						$result = true;
+					break;
 
-			case "upd":
-				$result = pg_query(self::$conn, $sql);
-				break;
+				case "del":
+						$con->exec($sql);
+						$result = true;
+					break;
 
-			case "del":
-				$result = pg_query(self::$conn, $sql);
-				break;
-
-			default:
-				$result = pg_query($sql, self::$conn);
-				break;
+				default:
+						$result = $con->prepare($sql);
+						$result->execute();
+					break;
+			}
+			unset($tur);
 		}
-		unset($tur);
+		catch (PDOException $e){
+			self::$lastError = $e->getMessage();
+			$result = false;
+		}
+
 		self::$timing['query'] = round((microtime(true) - $startTime), 5);
 		return $result;
 	}
@@ -127,24 +154,25 @@ class dbMysql {
 		return $resultsx;
 	}
 
-	public function fetch_array($queryResult, $row = Null, $type = PGSQL_BOTH) {
-		return pg_fetch_array($queryResult, $row, $type);
+	public function fetch_array($queryResult, $type = PDO::FETCH_BOTH) {
+		return $queryResult->fetch($type);
 	}
 
-	public function fetch_array_num($queryResult, $row=Null) {
-		return pg_fetch_array($queryResult, $row, PGSQL_NUM);
+	public function fetch_array_num($queryResult) {
+		return $queryResult->fetch(PDO::FETCH_NUM);
 	}
 
-	public function fetch_object($queryResult, $row = Null) {
-		return pg_fetch_object($queryResult, $row);
+	public function fetch_object($queryResult) {
+		return $queryResult->fetch(PDO::FETCH_OBJ);
 	}
 
-	public function fetch_assoc($queryResult, $row = Null) {
-		return pg_fetch_assoc($queryResult, $row);
+	public function fetch_assoc($queryResult) {
+		return $queryResult->fetch(PDO::FETCH_ASSOC);
 	}
 
 	public function num_rows($queryResult) {
-		return pg_num_rows($queryResult);
+		$numRows = $queryResult->rowCount();
+		return $numRows;
 	}
 
 	public function numRows($sql) {
@@ -164,18 +192,18 @@ class dbMysql {
 		$query = self::fetchArray($sql, 0);
 		$numRows = $query['dfsa1231fde5'];
 
-		self::$timing['numRows'] = round((microtime(true) - $startTime), 5);
+		self::$timing['numRowsCount'] = round((microtime(true) - $startTime), 5);
 
 		return $numRows;
 	}
 
 	public function affected_rows() {
-		return pg_affected_rows(self::$conn);
+		return self::$conn->rowCount();
 	}
 
 	public function free_result($queryResult) {
-		@pg_free_result($queryResult);
-		unset($queryResult);
+		do $queryResult->fetchAll();
+		while ($queryResult->nextRowSet());
 	}
 
 	public function insertId() {
@@ -183,25 +211,24 @@ class dbMysql {
 	}
 
 	public function insert_id() {
-		return pg_last_oid(self::$conn);
+		return self::$conn->lastInsertId();
 	}
 
-	public function result($queryResult, $rowIndex = 0, $colIndexOrName = Null) {
+	public function result($sql, $rowIndex = 0, $colIndexOrName = Null) {
 		if(!is_null($colIndexOrName)){
-			return pg_fetch_result($queryResult, $rowIndex, $colIndexOrName);
+			$result = self::fetchArray($sql, $rowIndex);
+			return $result[$colIndexOrName];
 		}
 		else{
-			return pg_fetch_result($queryResult, $rowIndex);
+			return self::fetchArray($sql, $rowIndex);
 		}
 	}
 
 	protected function close() {
-		return pg_close(self::$conn);
+		return self::$conn = null;
 	}
 
 	public function clean($sql) {
-		//return mysql_real_escape_string($sql);
-
 		$search = array("\\",  "\x00", "\n",  "\r",  "'",  '"', "\x1a");
 		$replace = array("\\\\","\\0","\\n", "\\r", "\'", '\"', "\\Z");
 
@@ -238,6 +265,11 @@ class dbMysql {
 		return self::$lastQuery;
 	}
 
+	public function setDebug($state = false){
+		self::$debug = $state;
+		return true;
+	}
+
 	public function getTiming(){
 		self::$timing['total'] = round((microtime(true) - self::$beginTime), 5);
 		return self::$timing;
@@ -246,7 +278,11 @@ class dbMysql {
 	public function __destruct(){
 		self::close();
 		if(self::$debug){
-			echo "\r\nTimes : " . print_r(self::getTiming(), true) . "\r\n";
+			echo "\r\nTimes : \n<pre>" . print_r(self::getTiming(), true) . "</pre>\r\n";
+			if(!is_null(self::$lastError)){
+				echo "Error : \n<pre>" . print_r(self::$lastError, true) . "</pre>";
+			}
 		}
+		error_reporting(self::$error_reporting);
 	}
 }
