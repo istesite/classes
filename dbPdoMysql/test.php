@@ -3,7 +3,7 @@ header('Content-Type: text/html; charset=utf-8');
 include_once "dbPdoMysql.class.php";
 
 # CONNECTION & SETTINGS
-$db = new dbPdoMysql('localhost', 'sqluser', 'sql11259375', 'istesite_taemca');
+$db = new dbPdoMysql('db_server', 'db_username', 'db_password', 'db_name');
 $db->setDebug(true);
 
 # SELECT fetchArray

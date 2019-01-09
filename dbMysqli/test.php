@@ -3,7 +3,7 @@ header('Content-Type: text/html; charset=utf-8');
 include_once "dbMysqli.class.php";
 
 # CONNECTION & SETTINGS
-$db = new dbMysqli('localhost', 'sqluser', 'sql11259375', 'istesite_taemca');
+$db = new dbMysqli('db_server', 'db_user', 'db_pass', 'db_name');
 $db->setDebug(true);
 
 # SELECT fetchArray
